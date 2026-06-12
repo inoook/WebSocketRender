@@ -10,6 +10,11 @@
       margin: 0;
       padding: 16px;
       background: #f0f0f0;
+      transition: background-color 0.18s ease, box-shadow 0.18s ease;
+    }
+    body.special-action-active {
+      background: #fff7c2;
+      box-shadow: inset 0 0 0 6px #f0b429;
     }
     html.mobile-no-scroll,
     html.mobile-no-scroll body {
@@ -83,6 +88,15 @@
       font-size: 0.9rem;
     }
     #gps-btn:disabled { background: #9e9e9e; cursor: default; }
+    #special-action {
+      margin-top: 10px;
+      padding: 8px 12px;
+      border-radius: 4px;
+      background: #fff7c2;
+      color: #6f4e00;
+      font-weight: 700;
+    }
+    #special-action.hidden { display: none; }
   </style>
 </head>
 <body>
@@ -90,6 +104,8 @@
   <div id="status" class="disconnected">Disconnected</div>
   <div id="client-id">Client ID: —</div>
   <div id="device-type">Device: —</div>
+  <div id="client-role">Role: —</div>
+  <div id="special-action" class="hidden"></div>
 
   <button id="gps-btn">Enable GPS</button>
 
@@ -128,11 +144,15 @@
     const statusEl = document.getElementById('status');
     const clientIdEl = document.getElementById('client-id');
     const deviceTypeEl = document.getElementById('device-type');
+    const clientRoleEl = document.getElementById('client-role');
+    const specialActionEl = document.getElementById('special-action');
     const gyroSendRateEl = document.getElementById('gyro-send-rate');
     const logEl    = document.getElementById('log');
     const gpsBtn   = document.getElementById('gps-btn');
     let clientId = null;
     let deviceType = null;
+    let clientRole = null;
+    let specialActionTimer = null;
     const isMobileBrowser = /Android|iPhone|iPad|iPod|Mobile|Windows Phone/i.test(navigator.userAgent);
 
     if (isMobileBrowser) {
@@ -215,8 +235,25 @@
       }
     }
 
+    function runSpecialAction(payload) {
+      const label = displayTypeName(payload.originalType);
+      specialActionEl.textContent = `Special action: ${payload.fromClientId} ${label}`;
+      specialActionEl.classList.remove('hidden');
+      document.body.classList.add('special-action-active');
+      appendLog('Special action from ' + payload.fromClientId + ' (' + label + ')');
+
+      if (specialActionTimer) {
+        clearTimeout(specialActionTimer);
+      }
+      specialActionTimer = setTimeout(() => {
+        document.body.classList.remove('special-action-active');
+        specialActionEl.classList.add('hidden');
+        specialActionTimer = null;
+      }, 1500);
+    }
+
     // ── WebSocket ─────────────────────────────────────────────────────────────
-    const WS_URL = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host;
+    const WS_URL = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + location.search;
     let ws = null;
     let reconnectTimer = null;
 
@@ -236,11 +273,16 @@
           if (msg.type === 'connected' && msg.payload && msg.payload.clientId) {
             clientId = msg.payload.clientId;
             deviceType = msg.payload.deviceType || 'unknown';
+            clientRole = msg.payload.role || 'viewer';
             clientIdEl.textContent = 'Client ID: ' + clientId;
             deviceTypeEl.textContent = 'Device: ' + deviceType;
+            clientRoleEl.textContent = 'Role: ' + clientRole;
           } else if (msg.type === 'relay' && msg.payload) {
             updateRelayDisplay(msg.payload);
             appendLog('Relay from ' + msg.payload.fromClientId + ' (' + displayTypeName(msg.payload.originalType) + ')');
+            return;
+          } else if (msg.type === 'special_action' && msg.payload) {
+            runSpecialAction(msg.payload);
             return;
           }
           appendLog('Server: ' + JSON.stringify(msg));
@@ -254,8 +296,10 @@
         statusEl.className = 'disconnected';
         clientId = null;
         deviceType = null;
+        clientRole = null;
         clientIdEl.textContent = 'Client ID: —';
         deviceTypeEl.textContent = 'Device: —';
+        clientRoleEl.textContent = 'Role: —';
         appendLog('WebSocket disconnected – reconnecting in 3 s');
         reconnectTimer = setTimeout(connect, 3000);
       });
