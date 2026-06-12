@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="ja">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -187,7 +187,6 @@
 
     // ── Mouse ─────────────────────────────────────────────────────────────────
     let mousePayload = null;
-    let mousePending = false;
 
     document.addEventListener('mousemove', (e) => {
       mousePayload = { x: e.clientX, y: e.clientY, screenX: e.screenX, screenY: e.screenY };
@@ -201,7 +200,7 @@
 
     // throttle mousemove sends to avoid flooding
     setInterval(() => {
-      if (mousePayload && !mousePending) {
+      if (mousePayload) {
         send('mouse_move', mousePayload);
         mousePayload = null;
       }
@@ -221,11 +220,11 @@
     // iOS 13+ requires permission
     if (typeof DeviceOrientationEvent !== 'undefined' &&
         typeof DeviceOrientationEvent.requestPermission === 'function') {
-      document.addEventListener('click', function requestGyro() {
+      document.addEventListener('click', function handleGyroPermissionRequest() {
         DeviceOrientationEvent.requestPermission()
           .then((state) => {
             if (state === 'granted') { startGyro(); }
-            document.removeEventListener('click', requestGyro);
+            document.removeEventListener('click', handleGyroPermissionRequest);
           })
           .catch(() => {});
       }, { once: true });
