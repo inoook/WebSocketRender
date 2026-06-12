@@ -94,6 +94,7 @@
       <tr id="row-outgoing-gps"><td>GPS</td><td id="outgoing-gps">—</td></tr>
       <tr id="row-outgoing-mouse"><td>Mouse</td><td id="outgoing-mouse">—</td></tr>
       <tr id="row-outgoing-gyro"><td>Gyroscope <span id="gyro-send-rate" class="rate-badge hidden"></span></td><td id="outgoing-gyro">—</td></tr>
+      <tr id="row-outgoing-motion"><td>Motion</td><td id="outgoing-motion">—</td></tr>
       <tr id="row-outgoing-touch"><td>Touch</td><td id="outgoing-touch">—</td></tr>
     </tbody>
   </table>
@@ -107,6 +108,7 @@
       <tr id="row-incoming-gps"><td>GPS</td><td id="incoming-gps">—</td></tr>
       <tr id="row-incoming-mouse"><td>Mouse</td><td id="incoming-mouse">—</td></tr>
       <tr id="row-incoming-gyro"><td>Gyroscope</td><td id="incoming-gyro">—</td></tr>
+      <tr id="row-incoming-motion"><td>Motion</td><td id="incoming-motion">—</td></tr>
       <tr id="row-incoming-touch"><td>Touch</td><td id="incoming-touch">—</td></tr>
     </tbody>
   </table>
@@ -135,6 +137,25 @@
       document.getElementById(id).textContent = text;
     }
 
+    function formatAxisValue(value) {
+      return typeof value === 'number' ? value.toFixed(2) : 'n/a';
+    }
+
+    function formatVector(vector) {
+      if (!vector) { return 'x:n/a y:n/a z:n/a'; }
+      return `x:${formatAxisValue(vector.x)} y:${formatAxisValue(vector.y)} z:${formatAxisValue(vector.z)}`;
+    }
+
+    function formatRotationRate(rotationRate) {
+      if (!rotationRate) { return 'alpha:n/a beta:n/a gamma:n/a'; }
+      return `alpha:${formatAxisValue(rotationRate.alpha)} beta:${formatAxisValue(rotationRate.beta)} gamma:${formatAxisValue(rotationRate.gamma)}`;
+    }
+
+    function formatMotionData(payload) {
+      if (!payload) { return 'No payload'; }
+      return `acc[${formatVector(payload.acceleration)}] gravity[${formatVector(payload.accelerationIncludingGravity)}] rot[${formatRotationRate(payload.rotationRate)}] interval:${formatAxisValue(payload.interval)}ms`;
+    }
+
     function formatRelayData(type, payload) {
       if (!payload) { return 'No payload'; }
       if (type === 'gps') {
@@ -142,6 +163,9 @@
       }
       if (type === 'gyroscope') {
         return `alpha:${(payload.alpha || 0).toFixed(1)} beta:${(payload.beta || 0).toFixed(1)} gamma:${(payload.gamma || 0).toFixed(1)}`;
+      }
+      if (type === 'motion') {
+        return formatMotionData(payload);
       }
       if (type === 'touch_start' || type === 'touch_move' || type === 'touch_end') {
         const touches = payload.touches || [];
@@ -160,6 +184,8 @@
         setText('incoming-gps', text);
       } else if (relay.originalType === 'gyroscope') {
         setText('incoming-gyro', text);
+      } else if (relay.originalType === 'motion') {
+        setText('incoming-motion', text);
       } else if (relay.originalType === 'touch_start' ||
                  relay.originalType === 'touch_move' ||
                  relay.originalType === 'touch_end') {
@@ -342,6 +368,63 @@
       updateGyroSendRate(gyroSentCount);
       gyroSentCount = 0;
     }, 1000);
+
+    // ── Motion (DeviceMotion) ─────────────────────────────────────────────────
+    const MOTION_SEND_INTERVAL_MS = 20;
+    let motionPayload = null;
+
+    function copyAcceleration(acceleration) {
+      if (!acceleration) { return null; }
+      return {
+        x: acceleration.x,
+        y: acceleration.y,
+        z: acceleration.z,
+      };
+    }
+
+    function copyRotationRate(rotationRate) {
+      if (!rotationRate) { return null; }
+      return {
+        alpha: rotationRate.alpha,
+        beta: rotationRate.beta,
+        gamma: rotationRate.gamma,
+      };
+    }
+
+    function startMotion() {
+      window.addEventListener('devicemotion', (e) => {
+        motionPayload = {
+          acceleration: copyAcceleration(e.acceleration),
+          accelerationIncludingGravity: copyAcceleration(e.accelerationIncludingGravity),
+          rotationRate: copyRotationRate(e.rotationRate),
+          interval: e.interval,
+          timestamp: Date.now(),
+        };
+        setText('outgoing-motion', formatMotionData(motionPayload));
+      });
+    }
+
+    // iOS 13+ requires permission
+    if (typeof DeviceMotionEvent !== 'undefined' &&
+        typeof DeviceMotionEvent.requestPermission === 'function') {
+      document.addEventListener('click', function handleMotionPermissionRequest() {
+        DeviceMotionEvent.requestPermission()
+          .then((state) => {
+            if (state === 'granted') { startMotion(); }
+            document.removeEventListener('click', handleMotionPermissionRequest);
+          })
+          .catch(() => {});
+      }, { once: true });
+    } else if (typeof DeviceMotionEvent !== 'undefined') {
+      startMotion();
+    }
+
+    setInterval(() => {
+      if (motionPayload) {
+        send('motion', motionPayload);
+        motionPayload = null;
+      }
+    }, MOTION_SEND_INTERVAL_MS);
 
     // ── Touch ─────────────────────────────────────────────────────────────────
     document.addEventListener('touchstart', (e) => {
