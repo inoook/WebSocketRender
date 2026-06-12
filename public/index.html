@@ -11,6 +11,14 @@
       padding: 16px;
       background: #f0f0f0;
     }
+    html.mobile-no-scroll,
+    html.mobile-no-scroll body {
+      overflow: hidden;
+      overscroll-behavior: none;
+    }
+    html.mobile-no-scroll body {
+      touch-action: none;
+    }
     h1 { font-size: 1.2rem; margin-bottom: 8px; }
     h2 {
       font-size: 1rem;
@@ -93,8 +101,8 @@
     <tbody id="data-rows">
       <tr id="row-outgoing-gps"><td>GPS</td><td id="outgoing-gps">—</td></tr>
       <tr id="row-outgoing-mouse"><td>Mouse</td><td id="outgoing-mouse">—</td></tr>
-      <tr id="row-outgoing-gyro"><td>Gyroscope <span id="gyro-send-rate" class="rate-badge hidden"></span></td><td id="outgoing-gyro">—</td></tr>
-      <tr id="row-outgoing-motion"><td>Motion</td><td id="outgoing-motion">—</td></tr>
+      <tr id="row-outgoing-gyro"><td>deviceOrientation <span id="gyro-send-rate" class="rate-badge hidden"></span></td><td id="outgoing-gyro">—</td></tr>
+      <tr id="row-outgoing-motion"><td>deviceMotion</td><td id="outgoing-motion">—</td></tr>
       <tr id="row-outgoing-touch"><td>Touch</td><td id="outgoing-touch">—</td></tr>
     </tbody>
   </table>
@@ -107,8 +115,8 @@
     <tbody id="relay-rows">
       <tr id="row-incoming-gps"><td>GPS</td><td id="incoming-gps">—</td></tr>
       <tr id="row-incoming-mouse"><td>Mouse</td><td id="incoming-mouse">—</td></tr>
-      <tr id="row-incoming-gyro"><td>Gyroscope</td><td id="incoming-gyro">—</td></tr>
-      <tr id="row-incoming-motion"><td>Motion</td><td id="incoming-motion">—</td></tr>
+      <tr id="row-incoming-gyro"><td>deviceOrientation</td><td id="incoming-gyro">—</td></tr>
+      <tr id="row-incoming-motion"><td>deviceMotion</td><td id="incoming-motion">—</td></tr>
       <tr id="row-incoming-touch"><td>Touch</td><td id="incoming-touch">—</td></tr>
     </tbody>
   </table>
@@ -125,6 +133,11 @@
     const gpsBtn   = document.getElementById('gps-btn');
     let clientId = null;
     let deviceType = null;
+    const isMobileBrowser = /Android|iPhone|iPad|iPod|Mobile|Windows Phone/i.test(navigator.userAgent);
+
+    if (isMobileBrowser) {
+      document.documentElement.classList.add('mobile-no-scroll');
+    }
 
     function appendLog(text) {
       const line = document.createElement('div');
@@ -154,6 +167,12 @@
     function formatMotionData(payload) {
       if (!payload) { return 'No payload'; }
       return `acc[${formatVector(payload.acceleration)}] gravity[${formatVector(payload.accelerationIncludingGravity)}] rot[${formatRotationRate(payload.rotationRate)}] interval:${formatAxisValue(payload.interval)}ms`;
+    }
+
+    function displayTypeName(type) {
+      if (type === 'gyroscope') { return 'deviceOrientation'; }
+      if (type === 'motion') { return 'deviceMotion'; }
+      return type;
     }
 
     function formatRelayData(type, payload) {
@@ -221,7 +240,7 @@
             deviceTypeEl.textContent = 'Device: ' + deviceType;
           } else if (msg.type === 'relay' && msg.payload) {
             updateRelayDisplay(msg.payload);
-            appendLog('Relay from ' + msg.payload.fromClientId + ' (' + msg.payload.originalType + ')');
+            appendLog('Relay from ' + msg.payload.fromClientId + ' (' + displayTypeName(msg.payload.originalType) + ')');
             return;
           }
           appendLog('Server: ' + JSON.stringify(msg));
@@ -434,10 +453,13 @@
     });
 
     document.addEventListener('touchmove', (e) => {
+      if (isMobileBrowser && e.cancelable) {
+        e.preventDefault();
+      }
       const touches = Array.from(e.touches).map((t) => ({ x: t.clientX, y: t.clientY, id: t.identifier }));
       setText('outgoing-touch', touches.map((t) => `(${t.x.toFixed(0)},${t.y.toFixed(0)})`).join(' '));
       send('touch_move', { touches });
-    }, { passive: true });
+    }, { passive: false });
 
     document.addEventListener('touchend', (e) => {
       const touches = Array.from(e.changedTouches).map((t) => ({ x: t.clientX, y: t.clientY, id: t.identifier }));
