@@ -64,6 +64,8 @@
 <body>
   <h1>WebSocket Sensor Demo</h1>
   <div id="status" class="disconnected">Disconnected</div>
+  <div id="client-id">Client ID: —</div>
+  <div id="device-type">Device: —</div>
 
   <button id="gps-btn">Enable GPS</button>
 
@@ -84,8 +86,12 @@
   <script>
     // ── Helpers ──────────────────────────────────────────────────────────────
     const statusEl = document.getElementById('status');
+    const clientIdEl = document.getElementById('client-id');
+    const deviceTypeEl = document.getElementById('device-type');
     const logEl    = document.getElementById('log');
     const gpsBtn   = document.getElementById('gps-btn');
+    let clientId = null;
+    let deviceType = null;
 
     function appendLog(text) {
       const line = document.createElement('div');
@@ -96,6 +102,41 @@
 
     function setText(id, text) {
       document.getElementById(id).textContent = text;
+    }
+
+    function formatRelayData(type, payload) {
+      if (!payload) { return 'No payload'; }
+      if (type === 'gps') {
+        return `${payload.latitude.toFixed(6)}, ${payload.longitude.toFixed(6)} (+/-${payload.accuracy.toFixed(0)} m)`;
+      }
+      if (type === 'gyroscope') {
+        return `alpha:${(payload.alpha || 0).toFixed(1)} beta:${(payload.beta || 0).toFixed(1)} gamma:${(payload.gamma || 0).toFixed(1)}`;
+      }
+      if (type === 'touch_start' || type === 'touch_move' || type === 'touch_end') {
+        const touches = payload.touches || [];
+        return touches.map((t) => `(${t.x.toFixed(0)},${t.y.toFixed(0)})`).join(' ');
+      }
+      if (type === 'mouse_move' || type === 'mouse_click') {
+        return `x:${payload.x} y:${payload.y}`;
+      }
+      return JSON.stringify(payload);
+    }
+
+    function updateRelayDisplay(relay) {
+      const prefix = relay.fromClientId + ': ';
+      const text = prefix + formatRelayData(relay.originalType, relay.payload);
+      if (relay.originalType === 'gps') {
+        setText('cell-gps', text);
+      } else if (relay.originalType === 'gyroscope') {
+        setText('cell-gyro', text);
+      } else if (relay.originalType === 'touch_start' ||
+                 relay.originalType === 'touch_move' ||
+                 relay.originalType === 'touch_end') {
+        setText('cell-touch', text);
+      } else if (relay.originalType === 'mouse_move' ||
+                 relay.originalType === 'mouse_click') {
+        setText('cell-mouse', text);
+      }
     }
 
     // ── WebSocket ─────────────────────────────────────────────────────────────
@@ -116,6 +157,16 @@
       ws.addEventListener('message', (event) => {
         try {
           const msg = JSON.parse(event.data);
+          if (msg.type === 'connected' && msg.payload && msg.payload.clientId) {
+            clientId = msg.payload.clientId;
+            deviceType = msg.payload.deviceType || 'unknown';
+            clientIdEl.textContent = 'Client ID: ' + clientId;
+            deviceTypeEl.textContent = 'Device: ' + deviceType;
+          } else if (msg.type === 'relay' && msg.payload) {
+            updateRelayDisplay(msg.payload);
+            appendLog('Relay from ' + msg.payload.fromClientId + ' (' + msg.payload.originalType + ')');
+            return;
+          }
           appendLog('Server: ' + JSON.stringify(msg));
         } catch {
           appendLog('Server (raw): ' + event.data);
@@ -125,6 +176,10 @@
       ws.addEventListener('close', () => {
         statusEl.textContent = 'Disconnected';
         statusEl.className = 'disconnected';
+        clientId = null;
+        deviceType = null;
+        clientIdEl.textContent = 'Client ID: —';
+        deviceTypeEl.textContent = 'Device: —';
         appendLog('WebSocket disconnected – reconnecting in 3 s');
         reconnectTimer = setTimeout(connect, 3000);
       });
