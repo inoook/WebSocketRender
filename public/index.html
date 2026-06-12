@@ -41,6 +41,18 @@
     }
     th { background: #4a90e2; color: #fff; }
     tr:last-child td { border-bottom: none; }
+    .rate-badge {
+      display: inline-block;
+      margin-left: 8px;
+      padding: 2px 6px;
+      border-radius: 4px;
+      background: #e8f2ff;
+      color: #1f5f99;
+      font-size: 0.76rem;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    .rate-badge.hidden { display: none; }
     #log {
       margin-top: 16px;
       background: #1e1e1e;
@@ -81,7 +93,7 @@
     <tbody id="data-rows">
       <tr id="row-outgoing-gps"><td>GPS</td><td id="outgoing-gps">—</td></tr>
       <tr id="row-outgoing-mouse"><td>Mouse</td><td id="outgoing-mouse">—</td></tr>
-      <tr id="row-outgoing-gyro"><td>Gyroscope</td><td id="outgoing-gyro">—</td></tr>
+      <tr id="row-outgoing-gyro"><td>Gyroscope <span id="gyro-send-rate" class="rate-badge hidden"></span></td><td id="outgoing-gyro">—</td></tr>
       <tr id="row-outgoing-touch"><td>Touch</td><td id="outgoing-touch">—</td></tr>
     </tbody>
   </table>
@@ -106,6 +118,7 @@
     const statusEl = document.getElementById('status');
     const clientIdEl = document.getElementById('client-id');
     const deviceTypeEl = document.getElementById('device-type');
+    const gyroSendRateEl = document.getElementById('gyro-send-rate');
     const logEl    = document.getElementById('log');
     const gpsBtn   = document.getElementById('gps-btn');
     let clientId = null;
@@ -280,7 +293,19 @@
     }, 100);
 
     // ── Gyroscope (DeviceOrientation) ─────────────────────────────────────────
+    const GYRO_SEND_INTERVAL_MS = 20;
     let gyroPayload = null;
+    let gyroSentCount = 0;
+
+    function updateGyroSendRate(rate) {
+      if (rate > 0) {
+        gyroSendRateEl.textContent = rate + 'Hz';
+        gyroSendRateEl.classList.remove('hidden');
+      } else {
+        gyroSendRateEl.textContent = '';
+        gyroSendRateEl.classList.add('hidden');
+      }
+    }
 
     function startGyro() {
       window.addEventListener('deviceorientation', (e) => {
@@ -308,9 +333,15 @@
     setInterval(() => {
       if (gyroPayload) {
         send('gyroscope', gyroPayload);
+        gyroSentCount += 1;
         gyroPayload = null;
       }
-    }, 200);
+    }, GYRO_SEND_INTERVAL_MS);
+
+    setInterval(() => {
+      updateGyroSendRate(gyroSentCount);
+      gyroSentCount = 0;
+    }, 1000);
 
     // ── Touch ─────────────────────────────────────────────────────────────────
     document.addEventListener('touchstart', (e) => {
