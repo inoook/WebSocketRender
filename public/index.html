@@ -12,6 +12,10 @@
       background: #f0f0f0;
     }
     h1 { font-size: 1.2rem; margin-bottom: 8px; }
+    h2 {
+      font-size: 1rem;
+      margin: 18px 0 8px;
+    }
     #status {
       padding: 8px 12px;
       border-radius: 4px;
@@ -69,15 +73,29 @@
 
   <button id="gps-btn">Enable GPS</button>
 
+  <h2>送信しているデータ</h2>
   <table>
     <thead>
       <tr><th>Type</th><th>Data</th></tr>
     </thead>
     <tbody id="data-rows">
-      <tr id="row-gps"><td>GPS</td><td id="cell-gps">—</td></tr>
-      <tr id="row-mouse"><td>Mouse</td><td id="cell-mouse">—</td></tr>
-      <tr id="row-gyro"><td>Gyroscope</td><td id="cell-gyro">—</td></tr>
-      <tr id="row-touch"><td>Touch</td><td id="cell-touch">—</td></tr>
+      <tr id="row-outgoing-gps"><td>GPS</td><td id="outgoing-gps">—</td></tr>
+      <tr id="row-outgoing-mouse"><td>Mouse</td><td id="outgoing-mouse">—</td></tr>
+      <tr id="row-outgoing-gyro"><td>Gyroscope</td><td id="outgoing-gyro">—</td></tr>
+      <tr id="row-outgoing-touch"><td>Touch</td><td id="outgoing-touch">—</td></tr>
+    </tbody>
+  </table>
+
+  <h2>受信しているデータ</h2>
+  <table>
+    <thead>
+      <tr><th>Type</th><th>Data</th></tr>
+    </thead>
+    <tbody id="relay-rows">
+      <tr id="row-incoming-gps"><td>GPS</td><td id="incoming-gps">—</td></tr>
+      <tr id="row-incoming-mouse"><td>Mouse</td><td id="incoming-mouse">—</td></tr>
+      <tr id="row-incoming-gyro"><td>Gyroscope</td><td id="incoming-gyro">—</td></tr>
+      <tr id="row-incoming-touch"><td>Touch</td><td id="incoming-touch">—</td></tr>
     </tbody>
   </table>
 
@@ -126,16 +144,16 @@
       const prefix = relay.fromClientId + ': ';
       const text = prefix + formatRelayData(relay.originalType, relay.payload);
       if (relay.originalType === 'gps') {
-        setText('cell-gps', text);
+        setText('incoming-gps', text);
       } else if (relay.originalType === 'gyroscope') {
-        setText('cell-gyro', text);
+        setText('incoming-gyro', text);
       } else if (relay.originalType === 'touch_start' ||
                  relay.originalType === 'touch_move' ||
                  relay.originalType === 'touch_end') {
-        setText('cell-touch', text);
+        setText('incoming-touch', text);
       } else if (relay.originalType === 'mouse_move' ||
                  relay.originalType === 'mouse_click') {
-        setText('cell-mouse', text);
+        setText('incoming-mouse', text);
       }
     }
 
@@ -209,7 +227,7 @@
         navigator.geolocation.clearWatch(gpsWatchId);
         gpsWatchId = null;
         gpsBtn.textContent = 'Enable GPS';
-        setText('cell-gps', '—');
+        setText('outgoing-gps', '—');
         appendLog('GPS stopped');
         return;
       }
@@ -226,7 +244,7 @@
             altitude:  pos.coords.altitude,
             timestamp: pos.timestamp,
           };
-          setText('cell-gps',
+          setText('outgoing-gps',
             `${payload.latitude.toFixed(6)}, ${payload.longitude.toFixed(6)} (±${payload.accuracy.toFixed(0)} m)`);
           send('gps', payload);
         },
@@ -245,7 +263,7 @@
 
     document.addEventListener('mousemove', (e) => {
       mousePayload = { x: e.clientX, y: e.clientY, screenX: e.screenX, screenY: e.screenY };
-      setText('cell-mouse', `x:${e.clientX} y:${e.clientY}`);
+      setText('outgoing-mouse', `x:${e.clientX} y:${e.clientY}`);
     });
 
     document.addEventListener('click', (e) => {
@@ -267,7 +285,7 @@
     function startGyro() {
       window.addEventListener('deviceorientation', (e) => {
         gyroPayload = { alpha: e.alpha, beta: e.beta, gamma: e.gamma };
-        setText('cell-gyro',
+        setText('outgoing-gyro',
           `α:${(e.alpha||0).toFixed(1)} β:${(e.beta||0).toFixed(1)} γ:${(e.gamma||0).toFixed(1)}`);
       });
     }
@@ -297,13 +315,13 @@
     // ── Touch ─────────────────────────────────────────────────────────────────
     document.addEventListener('touchstart', (e) => {
       const touches = Array.from(e.touches).map((t) => ({ x: t.clientX, y: t.clientY, id: t.identifier }));
-      setText('cell-touch', touches.map((t) => `(${t.x.toFixed(0)},${t.y.toFixed(0)})`).join(' '));
+      setText('outgoing-touch', touches.map((t) => `(${t.x.toFixed(0)},${t.y.toFixed(0)})`).join(' '));
       send('touch_start', { touches });
     });
 
     document.addEventListener('touchmove', (e) => {
       const touches = Array.from(e.touches).map((t) => ({ x: t.clientX, y: t.clientY, id: t.identifier }));
-      setText('cell-touch', touches.map((t) => `(${t.x.toFixed(0)},${t.y.toFixed(0)})`).join(' '));
+      setText('outgoing-touch', touches.map((t) => `(${t.x.toFixed(0)},${t.y.toFixed(0)})`).join(' '));
       send('touch_move', { touches });
     }, { passive: true });
 
