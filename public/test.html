@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sensor Test</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      margin: 0;
+      padding: 16px;
+      background: #f0f0f0;
+      color: #222;
+    }
+    html.mobile-no-scroll,
+    html.mobile-no-scroll body {
+      overflow: hidden;
+      overscroll-behavior: none;
+    }
+    html.mobile-no-scroll body {
+      touch-action: none;
+    }
+    h1 {
+      font-size: 1.2rem;
+      margin: 0 0 12px;
+    }
+    h2 {
+      font-size: 1rem;
+      margin: 18px 0 8px;
+    }
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    button {
+      padding: 8px 14px;
+      background: #4a90e2;
+      color: #fff;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 0.9rem;
+    }
+    button:disabled {
+      background: #9e9e9e;
+      cursor: default;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: #fff;
+      border-radius: 6px;
+      overflow: hidden;
+      box-shadow: 0 1px 4px rgba(0,0,0,.1);
+    }
+    th,
+    td {
+      text-align: left;
+      padding: 8px 12px;
+      border-bottom: 1px solid #e8e8e8;
+      font-size: 0.9rem;
+      vertical-align: top;
+    }
+    th {
+      background: #4a90e2;
+      color: #fff;
+    }
+    tr:last-child td {
+      border-bottom: none;
+    }
+    #log {
+      margin-top: 16px;
+      background: #1e1e1e;
+      color: #d4d4d4;
+      font-size: 0.78rem;
+      font-family: monospace;
+      padding: 10px;
+      height: 180px;
+      overflow-y: auto;
+      border-radius: 4px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Sensor Test</h1>
+
+  <div class="controls">
+    <button id="gps-btn" type="button">Enable GPS</button>
+    <button id="imu-btn" type="button">Enable IMU</button>
+  </div>
+
+  <h2>Sensor Values</h2>
+  <table>
+    <thead>
+      <tr><th>Type</th><th>Data</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>GPS</td><td id="cell-gps">-</td></tr>
+      <tr><td>deviceOrientation</td><td id="cell-orientation">-</td></tr>
+      <tr><td>deviceMotion</td><td id="cell-motion">-</td></tr>
+      <tr><td>Touch</td><td id="cell-touch">-</td></tr>
+    </tbody>
+  </table>
+
+  <div id="log"></div>
+
+  <script>
+    const gpsBtn = document.getElementById('gps-btn');
+    const imuBtn = document.getElementById('imu-btn');
+    const logEl = document.getElementById('log');
+    const isMobileBrowser = /Android|iPhone|iPad|iPod|Mobile|Windows Phone/i.test(navigator.userAgent);
+    let gpsWatchId = null;
+    let orientationStarted = false;
+    let motionStarted = false;
+
+    if (isMobileBrowser) {
+      document.documentElement.classList.add('mobile-no-scroll');
+    }
+
+    function appendLog(text) {
+      const line = document.createElement('div');
+      line.textContent = '[' + new Date().toLocaleTimeString() + '] ' + text;
+      logEl.appendChild(line);
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    function setText(id, text) {
+      document.getElementById(id).textContent = text;
+    }
+
+    function formatNumber(value, digits = 2) {
+      return typeof value === 'number' ? value.toFixed(digits) : 'n/a';
+    }
+
+    function formatVector(vector) {
+      if (!vector) {
+        return 'x:n/a y:n/a z:n/a';
+      }
+      return `x:${formatNumber(vector.x)} y:${formatNumber(vector.y)} z:${formatNumber(vector.z)}`;
+    }
+
+    function formatRotation(rotationRate) {
+      if (!rotationRate) {
+        return 'alpha:n/a beta:n/a gamma:n/a';
+      }
+      return `alpha:${formatNumber(rotationRate.alpha)} beta:${formatNumber(rotationRate.beta)} gamma:${formatNumber(rotationRate.gamma)}`;
+    }
+
+    gpsBtn.addEventListener('click', () => {
+      if (!('geolocation' in navigator)) {
+        appendLog('Geolocation not supported');
+        return;
+      }
+
+      if (gpsWatchId !== null) {
+        navigator.geolocation.clearWatch(gpsWatchId);
+        gpsWatchId = null;
+        gpsBtn.textContent = 'Enable GPS';
+        setText('cell-gps', '-');
+        appendLog('GPS stopped');
+        return;
+      }
+
+      gpsBtn.disabled = true;
+      gpsBtn.textContent = 'Requesting GPS...';
+      gpsWatchId = navigator.geolocation.watchPosition(
+        (pos) => {
+          gpsBtn.disabled = false;
+          gpsBtn.textContent = 'Stop GPS';
+          const { latitude, longitude, accuracy, altitude, heading, speed } = pos.coords;
+          setText(
+            'cell-gps',
+            [
+              `lat:${formatNumber(latitude, 6)}`,
+              `lon:${formatNumber(longitude, 6)}`,
+              `accuracy:${formatNumber(accuracy, 0)}m`,
+              `alt:${formatNumber(altitude)}m`,
+              `heading:${formatNumber(heading)}`,
+              `speed:${formatNumber(speed)}m/s`,
+              `timestamp:${new Date(pos.timestamp).toLocaleTimeString()}`,
+            ].join(' ')
+          );
+        },
+        (err) => {
+          gpsBtn.disabled = false;
+          gpsBtn.textContent = 'Enable GPS';
+          gpsWatchId = null;
+          appendLog('GPS error: ' + err.message);
+        },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      );
+    });
+
+    function startOrientation() {
+      if (orientationStarted || typeof DeviceOrientationEvent === 'undefined') {
+        return;
+      }
+      window.addEventListener('deviceorientation', (e) => {
+        setText(
+          'cell-orientation',
+          `alpha:${formatNumber(e.alpha)} beta:${formatNumber(e.beta)} gamma:${formatNumber(e.gamma)} absolute:${Boolean(e.absolute)}`
+        );
+      });
+      orientationStarted = true;
+      appendLog('deviceOrientation started');
+    }
+
+    function startMotion() {
+      if (motionStarted || typeof DeviceMotionEvent === 'undefined') {
+        return;
+      }
+      window.addEventListener('devicemotion', (e) => {
+        setText(
+          'cell-motion',
+          [
+            `acc[${formatVector(e.acceleration)}]`,
+            `gravity[${formatVector(e.accelerationIncludingGravity)}]`,
+            `rot[${formatRotation(e.rotationRate)}]`,
+            `interval:${formatNumber(e.interval)}ms`,
+          ].join(' ')
+        );
+      });
+      motionStarted = true;
+      appendLog('deviceMotion started');
+    }
+
+    imuBtn.addEventListener('click', async () => {
+      try {
+        if (typeof DeviceOrientationEvent !== 'undefined' &&
+            typeof DeviceOrientationEvent.requestPermission === 'function') {
+          const orientationState = await DeviceOrientationEvent.requestPermission();
+          if (orientationState === 'granted') {
+            startOrientation();
+          } else {
+            appendLog('deviceOrientation permission: ' + orientationState);
+          }
+        } else {
+          startOrientation();
+        }
+
+        if (typeof DeviceMotionEvent !== 'undefined' &&
+            typeof DeviceMotionEvent.requestPermission === 'function') {
+          const motionState = await DeviceMotionEvent.requestPermission();
+          if (motionState === 'granted') {
+            startMotion();
+          } else {
+            appendLog('deviceMotion permission: ' + motionState);
+          }
+        } else {
+          startMotion();
+        }
+      } catch (err) {
+        appendLog('IMU error: ' + err.message);
+      }
+
+      if (orientationStarted || motionStarted) {
+        imuBtn.disabled = true;
+        imuBtn.textContent = 'IMU Enabled';
+      }
+    });
+
+    document.addEventListener('touchstart', (e) => {
+      const touches = Array.from(e.touches).map((t) => ({ x: t.clientX, y: t.clientY, id: t.identifier }));
+      setText('cell-touch', touches.map((t) => `(${t.x.toFixed(0)},${t.y.toFixed(0)})`).join(' '));
+    });
+
+    document.addEventListener('touchmove', (e) => {
+      if (isMobileBrowser && e.cancelable) {
+        e.preventDefault();
+      }
+      const touches = Array.from(e.touches).map((t) => ({ x: t.clientX, y: t.clientY, id: t.identifier }));
+      setText('cell-touch', touches.map((t) => `(${t.x.toFixed(0)},${t.y.toFixed(0)})`).join(' '));
+    }, { passive: false });
+
+    document.addEventListener('touchend', () => {
+      setText('cell-touch', '-');
+    });
+  </script>
+</body>
+</html>
