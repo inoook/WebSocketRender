@@ -22,7 +22,7 @@ function detectDeviceType(userAgent = '') {
 
 function detectClientRole(req, deviceType) {
   const requestUrl = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
-  return deviceType === 'pc' && requestUrl.searchParams.get('role') === 'special' ? 'special' : 'viewer';
+  return requestUrl.searchParams.get('role') === 'special' ? 'special' : 'viewer';
 }
 
 function sendJson(ws, message) {
@@ -31,44 +31,60 @@ function sendJson(ws, message) {
   }
 }
 
-function buildMobileRelayPayload(fromClientId, originalMessage) {
+function buildRelayPayload(fromClient, originalMessage) {
   return {
-    fromClientId,
-    fromDeviceType: 'mobile',
+    fromClientId: fromClient.clientId,
+    fromDeviceType: fromClient.deviceType,
+    fromRole: fromClient.role,
     originalType: originalMessage.type,
     payload: originalMessage.payload,
     receivedAt: Date.now(),
   };
 }
 
-function relayMobileMessageToPcClients(fromClientId, originalMessage) {
+function shouldRelayMessage(fromClient, toClient) {
+  if (fromClient.clientId === toClient.clientId) {
+    return false;
+  }
+  return fromClient.role === 'special' || toClient.role === 'special';
+}
+
+function relayMessageByRole(fromClient, originalMessage) {
   let relayCount = 0;
-  let specialCount = 0;
-  const relayPayload = buildMobileRelayPayload(fromClientId, originalMessage);
+  const relayPayload = buildRelayPayload(fromClient, originalMessage);
   const relayMessage = {
     type: 'relay',
     payload: relayPayload,
   };
-  const specialMessage = {
-    type: 'special_action',
-    payload: {
-      ...relayPayload,
-      action: 'highlight',
-    },
-  };
 
   for (const client of clients.values()) {
-    if (client.deviceType === 'pc') {
+    if (shouldRelayMessage(fromClient, client)) {
       sendJson(client.ws, relayMessage);
       relayCount += 1;
-      if (client.role === 'special') {
-        sendJson(client.ws, specialMessage);
-        specialCount += 1;
-      }
     }
   }
 
-  return { relayCount, specialCount };
+  return relayCount;
+}
+
+function notifyClientDisconnected(disconnectedClient) {
+  const message = {
+    type: 'client_disconnected',
+    payload: {
+      clientId: disconnectedClient.clientId,
+      deviceType: disconnectedClient.deviceType,
+      role: disconnectedClient.role,
+      disconnectedAt: Date.now(),
+    },
+  };
+
+  let notifyCount = 0;
+  for (const client of clients.values()) {
+    sendJson(client.ws, message);
+    notifyCount += 1;
+  }
+
+  return notifyCount;
 }
 
 wss.on('connection', (ws, req) => {
@@ -76,17 +92,16 @@ wss.on('connection', (ws, req) => {
   const role = detectClientRole(req, deviceType);
   const clientId = `${deviceType}-${nextClientIds[deviceType]++}`;
   const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
-  clients.set(clientId, { ws, deviceType, role, clientIp });
+  const clientInfo = { clientId, ws, deviceType, role, clientIp };
+  clients.set(clientId, clientInfo);
   console.log(`[WS] Client connected: ${clientId} (${deviceType}, role=${role}, ${clientIp})`);
 
   ws.on('message', (data) => {
     try {
       const message = JSON.parse(data.toString());
       console.log(`[WS] ${clientId} received type="${message.type}":`, JSON.stringify(message.payload));
-      if (deviceType === 'mobile') {
-        const { relayCount, specialCount } = relayMobileMessageToPcClients(clientId, message);
-        console.log(`[WS] Relayed ${message.type} from ${clientId} to ${relayCount} PC client(s), special=${specialCount}`);
-      }
+      const relayCount = relayMessageByRole(clientInfo, message);
+      console.log(`[WS] Relayed ${message.type} from ${clientId} to ${relayCount} client(s)`);
     } catch {
       console.log(`[WS] ${clientId} received (raw):`, data.toString());
     }
@@ -94,7 +109,9 @@ wss.on('connection', (ws, req) => {
 
   ws.on('close', () => {
     clients.delete(clientId);
+    const notifyCount = notifyClientDisconnected(clientInfo);
     console.log(`[WS] Client disconnected: ${clientId} (${deviceType}, role=${role}, ${clientIp})`);
+    console.log(`[WS] Notified ${notifyCount} client(s) about disconnect: ${clientId}`);
   });
 
   ws.on('error', (err) => {
