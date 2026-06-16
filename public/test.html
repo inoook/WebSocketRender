@@ -12,14 +12,6 @@
       background: #f0f0f0;
       color: #222;
     }
-    html.mobile-no-scroll,
-    html.mobile-no-scroll body {
-      overflow: hidden;
-      overscroll-behavior: none;
-    }
-    html.mobile-no-scroll body {
-      touch-action: none;
-    }
     h1 {
       font-size: 1.2rem;
       margin: 0 0 12px;
@@ -110,14 +102,9 @@
     const gpsBtn = document.getElementById('gps-btn');
     const imuBtn = document.getElementById('imu-btn');
     const logEl = document.getElementById('log');
-    const isMobileBrowser = /Android|iPhone|iPad|iPod|Mobile|Windows Phone/i.test(navigator.userAgent);
     let gpsWatchId = null;
     let orientationStarted = false;
     let motionStarted = false;
-
-    if (isMobileBrowser) {
-      document.documentElement.classList.add('mobile-no-scroll');
-    }
 
     function appendLog(text) {
       const line = document.createElement('div');
@@ -267,12 +254,9 @@
     });
 
     document.addEventListener('touchmove', (e) => {
-      if (isMobileBrowser && e.cancelable) {
-        e.preventDefault();
-      }
       const touches = Array.from(e.touches).map((t) => ({ x: t.clientX, y: t.clientY, id: t.identifier }));
       setText('cell-touch', touches.map((t) => `(${t.x.toFixed(0)},${t.y.toFixed(0)})`).join(' '));
-    }, { passive: false });
+    });
 
     document.addEventListener('touchend', () => {
       setText('cell-touch', '-');
